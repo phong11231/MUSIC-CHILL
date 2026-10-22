@@ -1,0 +1,459 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Music Chill</title>
+<meta name="description" content="Phát đoạn nhạc SoundCloud theo start → end, lặp danh sách hoặc lặp 1 bài.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Ccircle cx='32' cy='32' r='30' fill='%23b3261e'/%3E%3Cpath d='M26 44V20l16-4v24' stroke='%23fff' stroke-width='4' fill='none' stroke-linecap='round'/%3E%3Ccircle cx='22' cy='44' r='5' fill='%23fff'/%3E%3Ccircle cx='38' cy='40' r='5' fill='%23fff'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@300;400;500;600&family=Fraunces:ital,opsz,wght@1,9..144,300;1,9..144,500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --ink: #f3efe9; --muted: rgba(243,239,233,.55); --line: rgba(255,255,255,.10);
+    --glass: rgba(18,16,20,.42); --accent: #ff5a4a; --accent-soft: rgba(255,90,74,.15);
+    --danger: #ff6b6b;
+  }
+  * { box-sizing: border-box; }
+  html, body { min-height: 100%; }
+  body { margin: 0; color: var(--ink); background: #0e0d10;
+    font: 15px/1.55 "Be Vietnam Pro", system-ui, sans-serif; font-weight: 400; overflow-x: hidden; }
+
+  /* ===== Nen: anh bia bai dang phat ===== */
+  .bg { position: fixed; inset: 0; z-index: -2; overflow: hidden; background:
+    radial-gradient(55% 45% at 50% 30%, #5a1414 0%, transparent 70%),
+    radial-gradient(45% 45% at 15% 85%, #2a1030 0%, transparent 70%),
+    radial-gradient(40% 40% at 90% 90%, #3b0f0f 0%, transparent 70%), #0d0a0b; }
+  .bg .layer { position: absolute; inset: -12%; background-size: cover; background-position: center;
+    filter: blur(48px) saturate(1.25) brightness(.62); opacity: 0; transform: scale(1.1);
+    transition: opacity 1.8s ease; animation: drift 38s ease-in-out infinite alternate; }
+  .bg .layer.on { opacity: 1; }
+  .bg::after { content: ""; position: absolute; inset: 0;
+    background: radial-gradient(120% 90% at 50% 0%, transparent 0%, rgba(8,7,10,.55) 70%, rgba(8,7,10,.85) 100%); }
+  .grain { position: fixed; inset: 0; z-index: -1; pointer-events: none; opacity: .07;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E"); }
+  @keyframes drift { 0% { transform: scale(1.1) translate(0,0) rotate(0); } 100% { transform: scale(1.22) translate(-3%,2%) rotate(2deg); } }
+  @media (prefers-reduced-motion: reduce) { .bg .layer, body.playing .cover, body.playing .eq i { animation: none !important; } }
+
+  .wrap { max-width: 720px; margin: 0 auto; padding: 28px 16px 80px; }
+
+  /* ===== Brand ===== */
+  .brand { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 36px; }
+  .logo { font-family: "Fraunces", Georgia, serif; font-style: italic; font-weight: 500; font-size: 26px; letter-spacing: -.01em; }
+  .logo span { color: var(--accent); }
+  .clock { font-size: 12px; color: var(--muted); letter-spacing: .12em; font-variant-numeric: tabular-nums; }
+
+  /* Song nhac nho canh nhan "Dang phat" */
+  .eq { display: inline-flex; gap: 2px; align-items: flex-end; height: 10px; margin-right: 8px; vertical-align: -1px; }
+  .eq i { width: 2px; height: 3px; background: var(--accent); border-radius: 1px; }
+  body.playing .eq i { animation: eq 1s ease-in-out infinite; }
+  body.playing .eq i:nth-child(2) { animation-delay: -.35s; }
+  body.playing .eq i:nth-child(3) { animation-delay: -.7s; }
+  body.playing .eq i:nth-child(4) { animation-delay: -.5s; }
+  @keyframes eq { 0%,100% { height: 3px; } 50% { height: 10px; } }
+  @keyframes breathe { 0%,100% { transform: scale(1); } 50% { transform: scale(1.025); } }
+
+  /* ===== Now playing ===== */
+  .hero { display: flex; gap: 22px; align-items: center; margin-bottom: 28px; }
+  .cover { width: 132px; height: 132px; flex: none; border-radius: 14px; background: rgba(255,255,255,.06) center/cover;
+    box-shadow: 0 24px 60px rgba(0,0,0,.55), 0 0 0 1px rgba(255,255,255,.08); transition: background-image .6s; position: relative; }
+  .cover::before { content: ""; position: absolute; inset: 8%; z-index: -1; border-radius: inherit; background: inherit;
+    filter: blur(28px) saturate(1.6); opacity: 0; transition: opacity 1s; }
+  body.playing .cover { animation: breathe 6s ease-in-out infinite; }
+  body.playing .cover.has::before { opacity: .8; }
+  .cover:empty::after { content: "♪"; position: absolute; inset: 0; display: grid; place-items: center; font-size: 40px; color: var(--muted); }
+  .cover.has::after { display: none; }
+  .np { min-width: 0; flex: 1; }
+  .np .label { font-size: 11px; letter-spacing: .18em; text-transform: uppercase; color: var(--muted); }
+  .np .t { font-family: "Fraunces", Georgia, serif; font-style: italic; font-size: 30px; font-weight: 500; line-height: 1.25; margin: 4px 0 2px;
+    display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+  .np .a { color: var(--muted); font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+  .bar { height: 3px; overflow: visible; background: var(--line); border-radius: 2px; overflow: hidden; margin: 16px 0 6px; }
+  .bar > div { height: 100%; width: 0; background: linear-gradient(90deg, var(--accent), var(--ink));
+    box-shadow: 0 0 12px var(--accent); transition: width .3s linear; }
+  .times { display: flex; justify-content: space-between; font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
+
+  .controls { display: flex; gap: 14px; align-items: center; justify-content: center; margin: 18px 0 30px; }
+  .controls button { background: transparent; border: 0; color: var(--ink); cursor: pointer; opacity: .75; padding: 8px;
+    font-size: 20px; transition: opacity .2s, transform .2s; }
+  .controls button:hover { opacity: 1; }
+  .controls .play { width: 62px; height: 62px; border-radius: 50%; background: var(--ink); color: #121014; opacity: 1;
+    font-size: 22px; box-shadow: 0 10px 30px rgba(0,0,0,.35); }
+  .controls .play:hover { transform: scale(1.06); box-shadow: 0 10px 40px rgba(255,90,74,.35); }
+  .mode { display: flex; justify-content: center; margin: -14px 0 28px; }
+  .mode .seg { display: inline-flex; background: rgba(255,255,255,.06); border: 1px solid var(--line); border-radius: 999px; padding: 3px; }
+  .mode button { font: inherit; font-size: 13px; background: transparent; border: 0; color: var(--muted); padding: 6px 14px;
+    border-radius: 999px; cursor: pointer; transition: background .2s, color .2s; }
+  .mode button.on { background: var(--ink); color: #121014; }
+  li.bad .title { color: var(--danger); }
+
+  /* ===== Card kinh mo ===== */
+  .card { background: var(--glass); border: 1px solid var(--line); border-radius: 16px; padding: 16px; margin-bottom: 16px;
+    backdrop-filter: blur(18px) saturate(1.2); -webkit-backdrop-filter: blur(18px) saturate(1.2); }
+  .card h2 { font-size: 11px; letter-spacing: .18em; text-transform: uppercase; color: var(--muted); font-weight: 500; margin: 0 0 12px; }
+  .add { display: grid; grid-template-columns: 1fr 80px 80px auto; gap: 8px; align-items: end; }
+  label { display: block; font-size: 11px; color: var(--muted); margin-bottom: 4px; }
+  input { width: 100%; padding: 9px 10px; border: 1px solid var(--line); border-radius: 10px; font: inherit; font-size: 14px;
+    background: rgba(255,255,255,.05); color: var(--ink); }
+  input::placeholder { color: rgba(243,239,233,.3); }
+  input:focus { outline: none; border-color: rgba(255,255,255,.35); background: rgba(255,255,255,.08); }
+  .btn { font: inherit; font-size: 14px; border: 0; background: var(--ink); color: #121014; border-radius: 10px; padding: 9px 16px;
+    cursor: pointer; font-weight: 500; }
+  .btn:hover { filter: brightness(.92); }
+  .hint { font-size: 12px; color: var(--muted); margin-top: 10px; }
+
+  ol { list-style: none; margin: 0; padding: 0; }
+  li { display: flex; gap: 12px; align-items: center; padding: 8px; border-radius: 12px; transition: background .2s; }
+  li:hover { background: rgba(255,255,255,.04); }
+  li.active { background: var(--accent-soft); }
+  .thumb { width: 42px; height: 42px; border-radius: 8px; flex: none; background: rgba(255,255,255,.07) center/cover;
+    display: grid; place-items: center; color: var(--muted); font-size: 13px; font-variant-numeric: tabular-nums; }
+  li.active .thumb { box-shadow: 0 0 0 2px var(--accent); }
+  .info { flex: 1; min-width: 0; cursor: pointer; }
+  .title { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 14px; }
+  li.active .title { color: var(--accent); }
+  .meta { font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; margin-top: 2px; }
+  .meta input { width: 58px; padding: 1px 6px; font-size: 12px; display: inline-block; border-radius: 6px; }
+  .acts { display: flex; gap: 2px; opacity: .5; transition: opacity .2s; }
+  li:hover .acts { opacity: 1; }
+  .acts button { background: transparent; border: 0; color: var(--ink); padding: 6px 7px; cursor: pointer; border-radius: 6px; font-size: 13px; }
+  .acts button:hover { background: rgba(255,255,255,.08); }
+  .acts button.del:hover { color: var(--danger); }
+  .empty { color: var(--muted); text-align: center; padding: 20px; font-size: 14px; }
+
+  .foot { text-align: center; font-size: 12px; color: var(--muted); margin-top: 28px; }
+  /* Player SoundCloud an di, chi dung de phat am thanh */
+  .player { position: fixed; width: 1px; height: 1px; left: -9999px; top: 0; }
+
+  @media (max-width: 600px) {
+    .wrap { padding-top: 24px; }
+    .hero { flex-direction: column; text-align: center; }
+    .cover { width: 220px; height: 220px; }
+    .add { grid-template-columns: 1fr 1fr; }
+    .add .url, .add .btn { grid-column: 1 / -1; }
+  }
+</style>
+</head>
+<body>
+<div class="bg"><div class="layer" id="bgA"></div><div class="layer" id="bgB"></div></div>
+<div class="grain"></div>
+
+<div class="wrap">
+  <header class="brand">
+    <div class="logo">music<span>·</span>chill</div>
+    <div class="clock" id="clock"></div>
+  </header>
+  <section class="hero">
+    <div class="cover" id="cover"></div>
+    <div class="np">
+      <div class="label"><span class="eq"><i></i><i></i><i></i><i></i></span><span id="npLabel">Sẵn sàng</span></div>
+      <div class="t" id="npTitle">Thả vài link, rồi bấm phát</div>
+      <div class="a" id="npArtist">Mỗi link phát đúng đoạn start → end, hết danh sách thì quay vòng lại.</div>
+    </div>
+  </section>
+
+  <div class="bar"><div id="prog"></div></div>
+  <div class="times"><span id="tPos">0:00</span><span id="tRange"></span></div>
+
+  <div class="controls">
+    <button id="btnPrev" title="Bài trước">⏮</button>
+    <button class="play" id="btnPlay" title="Phát / dừng">▶</button>
+    <button id="btnNext" title="Bài tiếp">⏭</button>
+  </div>
+  <div class="mode"><div class="seg">
+    <button data-mode="list">⟳ Lặp danh sách</button>
+    <button data-mode="one">↺ Lặp 1 bài</button>
+  </div></div>
+
+  <div class="card">
+    <h2>Thêm link</h2>
+    <form class="add" id="addForm">
+      <div class="url"><label>Link SoundCloud</label><input id="fUrl" placeholder="https://soundcloud.com/..." required></div>
+      <div><label>Start</label><input id="fStart" placeholder="0:30"></div>
+      <div><label>End</label><input id="fEnd" placeholder="1:45"></div>
+      <button class="btn" type="submit">Thêm</button>
+    </form>
+    <div class="hint">Giờ ghi dạng 1:23, 83 hoặc 1:02:03. Bỏ trống End thì phát tới hết bài. Link hỏng sẽ tự bị bỏ qua.</div>
+  </div>
+
+  <div class="card">
+    <h2>Danh sách</h2>
+    <ol id="list"></ol>
+  </div>
+  <p class="foot">Nhạc phát qua SoundCloud · danh sách lưu ngay trên trình duyệt của bạn</p>
+</div>
+
+<iframe class="player" id="sc" allow="autoplay"
+  src="https://w.soundcloud.com/player/?url=https%3A//soundcloud.com/forss/flickermood&auto_play=false"></iframe>
+
+<script src="https://w.soundcloud.com/player/api.js"></script>
+<script>
+// ===== Luu tru =====
+const KEY = 'scLoop.items';
+let items = [];
+try { items = JSON.parse(localStorage.getItem(KEY)) || []; } catch (e) {}
+const save = () => { try { localStorage.setItem(KEY, JSON.stringify(items)); } catch (e) {} };
+
+// ===== Thoi gian =====
+function parseTime(s) {
+  s = String(s || '').trim();
+  if (!s) return null;
+  const parts = s.replace(/s$/i, '').split(':').map(Number);
+  if (parts.some(isNaN)) return null;
+  return parts.reduce((acc, n) => acc * 60 + n, 0);
+}
+function fmt(sec) {
+  if (sec == null) return 'hết';
+  sec = Math.max(0, Math.floor(sec));
+  const h = Math.floor(sec / 3600), m = Math.floor(sec % 3600 / 60), s = sec % 60;
+  const mm = h ? String(m).padStart(2, '0') : m;
+  return (h ? h + ':' : '') + mm + ':' + String(s).padStart(2, '0');
+}
+
+// ===== Trang thai phat =====
+const widget = SC.Widget(document.getElementById('sc'));
+let cur = -1;          // index dang phat
+let mode = 'list';     // 'list' = lap danh sach, 'one' = lap 1 bai
+try { mode = localStorage.getItem('scLoop.mode') === 'one' ? 'one' : 'list'; } catch (e) {}
+let fails = 0;         // so link hong lien tiep
+let loadTimer = null;
+let pendingSeek = null;
+let switching = false; // chong goi next 2 lan
+let playing = false;
+let duration = 0;
+
+const $ = id => document.getElementById(id);
+
+// ===== Anh nen: cross-fade giua 2 lop =====
+let bgFront = 'bgA';
+function setBackground(url) {
+  if (!url) return;
+  const img = new Image();
+  img.onload = () => {
+    const back = bgFront === 'bgA' ? 'bgB' : 'bgA';
+    $(back).style.backgroundImage = `url("${url}")`;
+    $(back).classList.add('on');
+    $(bgFront).classList.remove('on');
+    bgFront = back;
+  };
+  img.src = url;
+}
+const bigArt = u => u ? u.replace('-large.', '-t500x500.') : '';
+
+function showSound(s, it) {
+  const art = bigArt(s.artwork_url || (s.user && s.user.avatar_url));
+  if (art) {
+    $('cover').style.backgroundImage = `url("${art}")`;
+    $('cover').classList.add('has');
+    setBackground(art);
+    it.art = art;
+  }
+  if (s.title) it.title = s.title;
+  if (s.user && s.user.username) it.artist = s.user.username;
+  save(); render();
+  $('npTitle').textContent = it.title || it.url;
+  $('npArtist').textContent = it.artist || '';
+}
+
+function playIndex(i) {
+  if (!items.length) { $('npTitle').textContent = 'Danh sách đang trống'; return; }
+  cur = ((i % items.length) + items.length) % items.length;
+  const it = items[cur];
+  switching = true;
+  clearTimeout(loadTimer);
+  // Link khong tai duoc trong 12s thi bo qua
+  loadTimer = setTimeout(() => skipBad(it), 12000);
+  $('npLabel').textContent = `Đang phát · ${cur + 1}/${items.length}`;
+  $('npTitle').textContent = it.title || 'Đang tải...';
+  $('npArtist').textContent = it.artist || '';
+  if (it.art) { $('cover').style.backgroundImage = `url("${it.art}")`; $('cover').classList.add('has'); setBackground(it.art); }
+  $('prog').style.width = '0';
+  render();
+  const prevId = lastSound.id, prevUrl = lastSound.url;
+  widget.load(it.url, {
+    auto_play: true, visual: false, show_comments: false,
+    callback: () => check(0)
+  });
+  // Ngay sau khi load, widget co the van tra ve bai cu -> thu lai vai lan roi moi ket luan link hong
+  function check(tries) {
+    if (items[cur] !== it) return;
+    widget.getCurrentSound(s => {
+      const ok = s && s.id && (s.id !== prevId || norm(prevUrl) === norm(it.url));
+      if (!ok) return tries < 8 ? setTimeout(() => check(tries + 1), 500) : skipBad(it);
+      clearTimeout(loadTimer);
+      lastSound = { id: s.id, url: it.url };
+      fails = 0; it.bad = false;
+      const ms = (it.start || 0) * 1000;
+      widget.getDuration(d => { duration = d / 1000; });
+      showSound(s, it);
+      widget.isPaused(paused => {
+        if (paused) { pendingSeek = ms; widget.play(); return; }
+        // Bai moi da tu phat (auto_play) -> tua luon
+        if (ms > 0) widget.seekTo(ms);
+        setTimeout(() => { switching = false; }, 600);
+      });
+    });
+  }
+}
+let lastSound = { id: null, url: '' };
+// Ghi lai bai mac dinh cua iframe de khong nham no la bai moi
+widget.bind(SC.Widget.Events.READY, () => widget.getCurrentSound(s => {
+  if (s && lastSound.id == null) lastSound = { id: s.id, url: s.permalink_url || '' };
+}));
+
+const norm = u => String(u).replace(/^https?:\/\/(www\.|m\.)?/, '').replace(/[?#].*$/, '').replace(/\/$/, '').toLowerCase();
+
+function skipBad(it) {
+  clearTimeout(loadTimer);
+  if (items[cur] !== it) return;
+  it.bad = true; save(); render();
+  fails++;
+  if (fails >= items.length) {
+    widget.pause(); switching = false;
+    $('npTitle').textContent = 'Không phát được link nào';
+    $('npArtist').textContent = 'Kiểm tra lại link (bài có thể bị xoá hoặc để riêng tư).';
+    return;
+  }
+  playIndex(cur + 1);
+}
+
+function restartSegment() {
+  const it = items[cur];
+  switching = true;
+  widget.seekTo((it.start || 0) * 1000);
+  setTimeout(() => { switching = false; }, 600);
+}
+
+function segmentDone() {
+  if (switching) return;
+  if (mode === 'one') restartSegment();
+  else playIndex(cur + 1);
+}
+
+widget.bind(SC.Widget.Events.PLAY, () => {
+  playing = true;
+  document.body.classList.add('playing');
+  $('btnPlay').textContent = '❚❚';
+  if (pendingSeek != null) {
+    const ms = pendingSeek; pendingSeek = null;
+    if (ms > 0) widget.seekTo(ms);
+    setTimeout(() => { switching = false; }, 600);
+  }
+  // Khong tat 'switching' o day: su kien PLAY co the den tu bai cu truoc khi bai moi san sang
+});
+
+widget.bind(SC.Widget.Events.PAUSE, () => {
+  playing = false;
+  document.body.classList.remove('playing');
+  $('btnPlay').textContent = '▶';
+});
+
+widget.bind(SC.Widget.Events.PLAY_PROGRESS, e => {
+  if (cur < 0 || !items[cur] || switching) return;
+  const it = items[cur];
+  const pos = e.currentPosition / 1000;
+  const start = it.start || 0;
+  const end = it.end != null ? it.end : (duration || null);
+  if (end) $('prog').style.width = Math.min(100, Math.max(0, (pos - start) / (end - start) * 100)) + '%';
+  $('tPos').textContent = fmt(pos);
+  $('tRange').textContent = `${fmt(start)} → ${fmt(it.end)}`;
+  if (it.end != null && pos >= it.end) segmentDone();
+});
+
+widget.bind(SC.Widget.Events.FINISH, () => segmentDone());
+
+// ===== Dieu khien =====
+$('btnPlay').onclick = () => {
+  if (cur < 0) { fails = 0; return playIndex(0); }
+  widget.toggle();
+};
+$('btnNext').onclick = () => { fails = 0; playIndex(cur + 1); };
+function setMode(m) {
+  mode = m;
+  try { localStorage.setItem('scLoop.mode', m); } catch (e) {}
+  document.querySelectorAll('[data-mode]').forEach(b => b.classList.toggle('on', b.dataset.mode === m));
+}
+document.querySelectorAll('[data-mode]').forEach(b => b.onclick = () => setMode(b.dataset.mode));
+setMode(mode);
+$('btnPrev').onclick = () => { fails = 0; playIndex(cur - 1); };
+
+$('addForm').onsubmit = e => {
+  e.preventDefault();
+  const url = $('fUrl').value.trim().split('?')[0].split('#')[0];
+  if (!/soundcloud\.com\//.test(url)) { alert('Link phải là link SoundCloud'); return; }
+  const start = parseTime($('fStart').value) || 0;
+  const end = parseTime($('fEnd').value);
+  if (end != null && end <= start) { alert('End phải lớn hơn Start'); return; }
+  items.push({ url, start, end, title: '' });
+  save(); render();
+  $('fUrl').value = ''; $('fStart').value = ''; $('fEnd').value = '';
+  $('fUrl').focus();
+};
+
+function editField(i, field, value) {
+  const it = items[i];
+  const t = parseTime(value);
+  it[field] = field === 'start' ? (t || 0) : t;
+  save(); render();
+}
+
+function move(i, d) {
+  const j = i + d;
+  if (j < 0 || j >= items.length) return;
+  [items[i], items[j]] = [items[j], items[i]];
+  if (cur === i) cur = j; else if (cur === j) cur = i;
+  save(); render();
+}
+
+function remove(i) {
+  items.splice(i, 1);
+  if (cur === i) { cur = -1; widget.pause(); }
+  else if (cur > i) cur--;
+  save(); render();
+}
+
+function esc(s) { return String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c])); }
+
+function render() {
+  const ol = $('list');
+  if (!items.length) { ol.innerHTML = '<div class="empty">Chưa có link nào.</div>'; return; }
+  ol.innerHTML = items.map((it, i) => `
+    <li class="${i === cur ? 'active' : ''}${it.bad ? ' bad' : ''}">
+      <div class="thumb" style="${it.art ? `background-image:url('${esc(it.art)}')` : ''}">${it.art ? '' : i + 1}</div>
+      <div class="info" data-play="${i}">
+        <div class="title">${esc(it.title || it.url.replace(/^https?:\/\/(www\.)?soundcloud\.com\//, ''))}</div>
+        <div class="meta">
+          <input value="${fmt(it.start)}" data-i="${i}" data-f="start" title="Start"> →
+          <input value="${it.end == null ? '' : fmt(it.end)}" placeholder="hết" data-i="${i}" data-f="end" title="End">${it.bad ? ' · link hỏng' : ''}
+        </div>
+      </div>
+      <div class="acts">
+        <button data-mv="${i}" data-d="-1" title="Lên">↑</button>
+        <button data-mv="${i}" data-d="1" title="Xuống">↓</button>
+        <button class="del" data-del="${i}" title="Xoá">✕</button>
+      </div>
+    </li>`).join('');
+}
+
+$('list').addEventListener('click', e => {
+  const t = e.target;
+  if (t.tagName === 'INPUT') return;
+  if (t.dataset.del != null) return remove(+t.dataset.del);
+  if (t.dataset.mv != null) return move(+t.dataset.mv, +t.dataset.d);
+  const info = t.closest('[data-play]');
+  if (info) playIndex(+info.dataset.play);
+});
+$('list').addEventListener('change', e => {
+  const t = e.target;
+  if (t.dataset.f) editField(+t.dataset.i, t.dataset.f, t.value);
+});
+
+// Dong ho nho goc tren
+const tick = () => { $('clock').textContent = new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' }); };
+tick(); setInterval(tick, 15000);
+
+render();
+</script>
+</body>
+</html>
