@@ -134,6 +134,14 @@
   .acts button.del:hover { color: var(--danger); }
   .empty { color: var(--muted); text-align: center; padding: 20px; font-size: 14px; }
 
+  .listhead { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 12px; }
+  .listhead h2 { margin: 0; }
+  .sync { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--muted); }
+  .sync .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--muted); }
+  .sync.ok .dot { background: #4ade80; } .sync.busy .dot { background: #facc15; } .sync.err .dot { background: var(--danger); }
+  .sync button { font: inherit; font-size: 12px; background: rgba(255,255,255,.06); border: 1px solid var(--line); color: var(--ink);
+    border-radius: 999px; padding: 4px 10px; cursor: pointer; }
+  .sync button:hover { background: rgba(255,255,255,.12); }
   .foot { text-align: center; font-size: 12px; color: var(--muted); margin-top: 28px; }
   /* Player SoundCloud an di, chi dung de phat am thanh */
   .player { position: fixed; width: 1px; height: 1px; left: -9999px; top: 0; }
@@ -198,10 +206,13 @@
   </div>
 
   <div class="card">
-    <h2>Danh sách</h2>
+    <div class="listhead">
+      <h2>Danh sách</h2>
+      <div class="sync" id="sync"><span class="dot"></span><span id="syncText">Đang tải...</span><button id="btnGh" type="button">Kết nối GitHub</button></div>
+    </div>
     <ol id="list"></ol>
   </div>
-  <p class="foot">Nhạc phát qua SoundCloud · danh sách lưu ngay trên trình duyệt của bạn</p>
+  <p class="foot">Nhạc phát qua SoundCloud · danh sách lưu trên GitHub</p>
 </div>
 
 <iframe class="player" id="sc" allow="autoplay"
@@ -214,6 +225,77 @@ const KEY = 'scLoop.items';
 let items = [];
 try { items = JSON.parse(localStorage.getItem(KEY)) || []; } catch (e) {}
 const save = () => { try { localStorage.setItem(KEY, JSON.stringify(items)); } catch (e) {} };
+
+// ===== Dong bo danh sach voi GitHub (playlist.json trong repo) =====
+const GH = { owner: 'phong11231', repo: 'MUSIC-CHILL', path: 'playlist.json', branch: 'main' };
+const GH_API = `https://api.github.com/repos/${GH.owner}/${GH.repo}/contents/${GH.path}`;
+let ghSha = null, pushTimer = null;
+const ghToken = () => { try { return localStorage.getItem('scLoop.ghToken') || ''; } catch (e) { return ''; } };
+const b64enc = str => btoa(unescape(encodeURIComponent(str)));
+const b64dec = b => decodeURIComponent(escape(atob(b.replace(/\n/g, ''))));
+
+function setSync(state, text) {
+  $('sync').className = 'sync ' + state;
+  $('syncText').textContent = text;
+  $('btnGh').textContent = ghToken() ? 'Đổi token' : 'Kết nối GitHub';
+}
+
+async function pullRemote() {
+  const headers = { Accept: 'application/vnd.github+json' };
+  if (ghToken()) headers.Authorization = 'Bearer ' + ghToken();
+  const r = await fetch(`${GH_API}?ref=${GH.branch}&t=${Date.now()}`, { headers, cache: 'no-store' });
+  if (r.status === 404) { ghSha = null; return null; }
+  if (!r.ok) throw new Error('HTTP ' + r.status);
+  const j = await r.json();
+  ghSha = j.sha;
+  return JSON.parse(b64dec(j.content));
+}
+
+// Chi luu cac truong nguoi dung nhap (khong luu anh bia, trang thai loi...)
+const toRemote = () => items.map(({ url, start, end, title }) => ({ url, start, end: end == null ? null : end, title: title || '' }));
+
+async function pushRemote(retry = true) {
+  if (!ghToken()) { setSync('err', 'Chưa lưu lên GitHub (chưa kết nối)'); return; }
+  setSync('busy', 'Đang lưu lên GitHub...');
+  const body = { message: 'Cap nhat playlist', content: b64enc(JSON.stringify(toRemote(), null, 2) + '\n'), branch: GH.branch };
+  if (ghSha) body.sha = ghSha;
+  try {
+    const r = await fetch(GH_API, { method: 'PUT', headers: { Authorization: 'Bearer ' + ghToken(), Accept: 'application/vnd.github+json' }, body: JSON.stringify(body) });
+    if ((r.status === 409 || r.status === 422) && retry) { await pullRemote(); return pushRemote(false); }
+    if (r.status === 401 || r.status === 403) { setSync('err', 'Token sai hoặc không có quyền ghi'); return; }
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    ghSha = (await r.json()).content.sha;
+    setSync('ok', 'Đã lưu lên GitHub');
+  } catch (e) {
+    setSync('err', 'Lỗi lưu GitHub: ' + e.message);
+  }
+}
+
+// Goi sau moi thay doi cua nguoi dung (them / xoa / sua / doi thu tu)
+function commit() {
+  save(); render();
+  clearTimeout(pushTimer);
+  if (!ghToken()) { setSync('err', 'Chưa lưu lên GitHub (chưa kết nối)'); return; }
+  setSync('busy', 'Chờ lưu...');
+  pushTimer = setTimeout(() => pushRemote(), 1200);
+}
+
+async function loadRemote() {
+  try {
+    const list = await pullRemote();
+    if (Array.isArray(list)) {
+      // Giu lai anh bia/ten da biet trong may de hien nhanh
+      const known = Object.fromEntries(items.map(it => [it.url, it]));
+      items = list.map(it => ({ ...(known[it.url] || {}), ...it, bad: false }));
+      save(); render();
+      setSync('ok', `Đã tải ${items.length} link từ GitHub`);
+    } else {
+      setSync('ok', 'GitHub chưa có danh sách');
+    }
+  } catch (e) {
+    setSync('err', 'Không tải được từ GitHub, đang dùng bản trên máy');
+  }
+}
 
 // ===== Thoi gian =====
 function parseTime(s) {
@@ -391,7 +473,7 @@ $('addForm').onsubmit = e => {
   const end = parseTime($('fEnd').value);
   if (end != null && end <= start) { alert('End phải lớn hơn Start'); return; }
   items.push({ url, start, end, title: '' });
-  save(); render();
+  commit();
   $('fUrl').value = ''; $('fStart').value = ''; $('fEnd').value = '';
   $('fUrl').focus();
 };
@@ -400,7 +482,7 @@ function editField(i, field, value) {
   const it = items[i];
   const t = parseTime(value);
   it[field] = field === 'start' ? (t || 0) : t;
-  save(); render();
+  commit();
 }
 
 function move(i, d) {
@@ -408,14 +490,14 @@ function move(i, d) {
   if (j < 0 || j >= items.length) return;
   [items[i], items[j]] = [items[j], items[i]];
   if (cur === i) cur = j; else if (cur === j) cur = i;
-  save(); render();
+  commit();
 }
 
 function remove(i) {
   items.splice(i, 1);
   if (cur === i) { cur = -1; widget.pause(); }
   else if (cur > i) cur--;
-  save(); render();
+  commit();
 }
 
 function esc(s) { return String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c])); }
@@ -499,7 +581,15 @@ requestAnimationFrame(drawViz);
 const tick = () => { $('clock').textContent = new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' }); };
 tick(); setInterval(tick, 15000);
 
+$('btnGh').onclick = () => {
+  const t = prompt('Dán GitHub token (fine-grained, chỉ repo MUSIC-CHILL, quyền Contents: Read and write).\nToken chỉ lưu trên trình duyệt này. Để trống để ngắt kết nối.', '');
+  if (t === null) return;
+  try { t.trim() ? localStorage.setItem('scLoop.ghToken', t.trim()) : localStorage.removeItem('scLoop.ghToken'); } catch (e) {}
+  if (t.trim()) loadRemote(); else setSync('', 'Đã ngắt kết nối GitHub');
+};
+
 render();
+loadRemote();
 </script>
 </body>
 </html>
