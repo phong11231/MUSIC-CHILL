@@ -19,23 +19,35 @@
   body { margin: 0; color: var(--ink); background: #0e0d10;
     font: 15px/1.55 "Be Vietnam Pro", system-ui, sans-serif; font-weight: 400; overflow-x: hidden; }
 
-  /* ===== Nen: anh bia bai dang phat ===== */
-  .bg { position: fixed; inset: 0; z-index: -2; overflow: hidden; background:
-    radial-gradient(55% 45% at 50% 30%, #5a1414 0%, transparent 70%),
-    radial-gradient(45% 45% at 15% 85%, #2a1030 0%, transparent 70%),
-    radial-gradient(40% 40% at 90% 90%, #3b0f0f 0%, transparent 70%), #0d0a0b; }
-  .bg .layer { position: absolute; inset: -12%; background-size: cover; background-position: center;
-    filter: blur(48px) saturate(1.25) brightness(.62); opacity: 0; transform: scale(1.1);
-    transition: opacity 1.8s ease; animation: drift 38s ease-in-out infinite alternate; }
-  .bg .layer.on { opacity: 1; }
+  /* ===== Nen: anh bg.jpg ben phai, mo dan sang trai ===== */
+  .bg { position: fixed; inset: 0; z-index: -2; overflow: hidden;
+    background: radial-gradient(70% 80% at 85% 35%, #6e0b0b 0%, #2a0505 45%, #0b0303 100%); }
+  .bg .art { position: absolute; top: 0; right: 0; height: 100%; aspect-ratio: 1 / 1;
+    background: url("bg.jpg") center / cover no-repeat;
+    -webkit-mask-image: linear-gradient(to right, transparent 0%, #000 38%), linear-gradient(to top, transparent 0%, #000 30%);
+    -webkit-mask-composite: source-in; mask-image: linear-gradient(to right, transparent 0%, #000 38%), linear-gradient(to top, transparent 0%, #000 30%);
+    mask-composite: intersect; transform-origin: 60% 35%; animation: kenburns 40s ease-in-out infinite alternate;
+    animation-play-state: paused; filter: saturate(1.1) contrast(1.05); }
+  body.playing .bg .art { animation-play-state: running; }
+  /* Quang do dap theo nhac sau vong tron do */
+  .bg .pulse { position: absolute; right: 0; top: 0; height: 100%; aspect-ratio: 1 / 1; pointer-events: none;
+    background: radial-gradient(46% 46% at 50% 44%, transparent 80%, rgba(255,40,30,.45) 88%, transparent 100%);
+    opacity: 0; mix-blend-mode: screen; transition: opacity .8s; }
+  body.playing .bg .pulse { opacity: 1; animation: pulse 2.2s ease-in-out infinite; }
   .bg::after { content: ""; position: absolute; inset: 0;
-    background: radial-gradient(120% 90% at 50% 0%, transparent 0%, rgba(8,7,10,.55) 70%, rgba(8,7,10,.85) 100%); }
+    background: linear-gradient(90deg, rgba(8,2,2,.85) 0%, rgba(8,2,2,.55) 40%, transparent 70%),
+      linear-gradient(0deg, rgba(5,1,1,.9) 0%, transparent 35%); }
+  @keyframes kenburns { 0% { transform: scale(1); } 100% { transform: scale(1.12) translate(-1.5%, 1%); } }
+  @keyframes pulse { 0%,100% { transform: scale(1); opacity: .55; } 50% { transform: scale(1.04); opacity: 1; } }
   .grain { position: fixed; inset: 0; z-index: -1; pointer-events: none; opacity: .07;
     background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E"); }
   @keyframes drift { 0% { transform: scale(1.1) translate(0,0) rotate(0); } 100% { transform: scale(1.22) translate(-3%,2%) rotate(2deg); } }
-  @media (prefers-reduced-motion: reduce) { .bg .layer, body.playing .cover, body.playing .eq i { animation: none !important; } }
+  @media (prefers-reduced-motion: reduce) { .bg .art, .bg .pulse, body.playing .cover, body.playing .eq i { animation: none !important; } }
 
-  .wrap { max-width: 720px; margin: 0 auto; padding: 28px 16px 80px; }
+  .wrap { max-width: 640px; margin: 0 0 0 clamp(16px, 7vw, 140px); padding: 28px 16px 80px; }
+
+  /* ===== Song nhac ===== */
+  .viz { display: block; width: 100%; height: 90px; margin-top: 18px; }
 
   /* ===== Brand ===== */
   .brand { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 36px; }
@@ -126,6 +138,13 @@
   /* Player SoundCloud an di, chi dung de phat am thanh */
   .player { position: fixed; width: 1px; height: 1px; left: -9999px; top: 0; }
 
+  @media (max-width: 900px) {
+    .wrap { margin: 0 auto; }
+    .bg .art, .bg .pulse { width: 100%; height: auto; }
+    .bg .art { -webkit-mask-image: linear-gradient(to top, transparent 0%, #000 45%); mask-image: linear-gradient(to top, transparent 0%, #000 45%); }
+    .bg::after { background: linear-gradient(0deg, rgba(8,2,2,.92) 0%, rgba(8,2,2,.6) 35%, transparent 70%); }
+    .hero { margin-top: 68vw; }
+  }
   @media (max-width: 600px) {
     .wrap { padding-top: 24px; }
     .hero { flex-direction: column; text-align: center; }
@@ -136,7 +155,7 @@
 </style>
 </head>
 <body>
-<div class="bg"><div class="layer" id="bgA"></div><div class="layer" id="bgB"></div></div>
+<div class="bg"><div class="art"></div><div class="pulse"></div></div>
 <div class="grain"></div>
 
 <div class="wrap">
@@ -153,6 +172,7 @@
     </div>
   </section>
 
+  <canvas class="viz" id="viz" aria-hidden="true"></canvas>
   <div class="bar"><div id="prog"></div></div>
   <div class="times"><span id="tPos">0:00</span><span id="tRange"></span></div>
 
@@ -225,20 +245,6 @@ let duration = 0;
 
 const $ = id => document.getElementById(id);
 
-// ===== Anh nen: cross-fade giua 2 lop =====
-let bgFront = 'bgA';
-function setBackground(url) {
-  if (!url) return;
-  const img = new Image();
-  img.onload = () => {
-    const back = bgFront === 'bgA' ? 'bgB' : 'bgA';
-    $(back).style.backgroundImage = `url("${url}")`;
-    $(back).classList.add('on');
-    $(bgFront).classList.remove('on');
-    bgFront = back;
-  };
-  img.src = url;
-}
 const bigArt = u => u ? u.replace('-large.', '-t500x500.') : '';
 
 function showSound(s, it) {
@@ -246,7 +252,6 @@ function showSound(s, it) {
   if (art) {
     $('cover').style.backgroundImage = `url("${art}")`;
     $('cover').classList.add('has');
-    setBackground(art);
     it.art = art;
   }
   if (s.title) it.title = s.title;
@@ -267,7 +272,7 @@ function playIndex(i) {
   $('npLabel').textContent = `Đang phát · ${cur + 1}/${items.length}`;
   $('npTitle').textContent = it.title || 'Đang tải...';
   $('npArtist').textContent = it.artist || '';
-  if (it.art) { $('cover').style.backgroundImage = `url("${it.art}")`; $('cover').classList.add('has'); setBackground(it.art); }
+  if (it.art) { $('cover').style.backgroundImage = `url("${it.art}")`; $('cover').classList.add('has'); }
   $('prog').style.width = '0';
   render();
   const prevId = lastSound.id, prevUrl = lastSound.url;
@@ -448,6 +453,47 @@ $('list').addEventListener('change', e => {
   const t = e.target;
   if (t.dataset.f) editField(+t.dataset.i, t.dataset.f, t.value);
 });
+
+// ===== Song nhac =====
+// SoundCloud khong cho doc du lieu am thanh tu iframe, nen song duoc mo phong theo trang thai phat
+const viz = $('viz'), vctx = viz.getContext('2d');
+const BARS = 56;
+const lv = new Float32Array(BARS), tg = new Float32Array(BARS);
+let amp = 0, lastTarget = 0;
+function drawViz(t) {
+  const dpr = window.devicePixelRatio || 1;
+  const w = viz.clientWidth, h = viz.clientHeight;
+  const pw = Math.round(w * dpr), ph = Math.round(h * dpr);
+  if (viz.width !== pw || viz.height !== ph) { viz.width = pw; viz.height = ph; }
+  vctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  vctx.clearRect(0, 0, w, h);
+  amp += ((playing && !switching ? 1 : playing ? .35 : 0) - amp) * .06;
+  if (t - lastTarget > 110) {
+    lastTarget = t;
+    const beat = Math.pow(Math.max(0, Math.sin(t / 260)), 6); // nhip manh dinh ky
+    for (let i = 0; i < BARS; i++) {
+      const x = i / (BARS - 1);
+      const shape = .35 + .65 * Math.sin(Math.PI * x);    // cao o giua, thap hai dau
+      const bass = x < .3 ? beat * .6 : 0;
+      tg[i] = Math.min(1, shape * (.25 + Math.random() * .75) + bass);
+    }
+  }
+  const gap = 3, bw = (w - gap * (BARS - 1)) / BARS, base = h * .78;
+  const grad = vctx.createLinearGradient(0, base, 0, 0);
+  grad.addColorStop(0, '#ff2d20'); grad.addColorStop(.6, '#ff7a6b'); grad.addColorStop(1, '#ffe2dc');
+  for (let i = 0; i < BARS; i++) {
+    lv[i] += (tg[i] * amp - lv[i]) * .18;
+    const bh = Math.max(2, lv[i] * base);
+    const x = i * (bw + gap);
+    vctx.fillStyle = grad; vctx.shadowColor = 'rgba(255,45,32,.6)'; vctx.shadowBlur = 12;
+    vctx.fillRect(x, base - bh, bw, bh);
+    // bong phan chieu
+    vctx.shadowBlur = 0; vctx.fillStyle = 'rgba(255,60,45,.18)';
+    vctx.fillRect(x, base + 2, bw, bh * .25);
+  }
+  requestAnimationFrame(drawViz);
+}
+requestAnimationFrame(drawViz);
 
 // Dong ho nho goc tren
 const tick = () => { $('clock').textContent = new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' }); };
