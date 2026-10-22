@@ -215,7 +215,9 @@
   <p class="foot">Nhạc phát qua SoundCloud · danh sách lưu trên GitHub</p>
 </div>
 
-<iframe class="player" id="sc" allow="autoplay"
+<iframe class="player" id="scA" allow="autoplay"
+  src="https://w.soundcloud.com/player/?url=https%3A//soundcloud.com/forss/flickermood&auto_play=false"></iframe>
+<iframe class="player" id="scB" allow="autoplay"
   src="https://w.soundcloud.com/player/?url=https%3A//soundcloud.com/forss/flickermood&auto_play=false"></iframe>
 
 <script src="https://w.soundcloud.com/player/api.js"></script>
@@ -274,6 +276,7 @@ async function pushRemote(retry = true) {
 // Goi sau moi thay doi cua nguoi dung (them / xoa / sua / doi thu tu)
 function commit() {
   save(); render();
+  if (cur >= 0) schedulePreload(300);
   clearTimeout(pushTimer);
   if (!ghToken()) { setSync('err', 'Chưa lưu lên GitHub (chưa kết nối)'); return; }
   setSync('busy', 'Chờ lưu...');
@@ -314,20 +317,91 @@ function fmt(sec) {
 }
 
 // ===== Trang thai phat =====
-const widget = SC.Widget(document.getElementById('sc'));
+const $ = id => document.getElementById(id);
 let cur = -1;          // index dang phat
 let mode = 'list';     // 'list' = lap danh sach, 'one' = lap 1 bai
 try { mode = localStorage.getItem('scLoop.mode') === 'one' ? 'one' : 'list'; } catch (e) {}
 let fails = 0;         // so link hong lien tiep
-let loadTimer = null;
-let pendingSeek = null;
 let switching = false; // chong goi next 2 lan
 let playing = false;
 let duration = 0;
+let preloadTimer = null;
 
-const $ = id => document.getElementById(id);
-
+const norm = u => String(u).replace(/^https?:\/\/(www\.|m\.)?/, '').replace(/[?#].*$/, '').replace(/\/$/, '').toLowerCase();
 const bigArt = u => u ? u.replace('-large.', '-t500x500.') : '';
+
+// ===== 2 trinh phat: 1 cai dang phat, 1 cai tai san bai ke tiep (tua san toi Start) =====
+// -> chuyen bai gan nhu ngay lap tuc thay vi phai cho load lai tu dau
+let jobSeq = 0;
+const P = ['scA', 'scB'].map(id => ({
+  w: SC.Widget($(id)),
+  soundId: null, url: '', idx: -1, start: -1, sound: null,
+  ready: false, job: 0, seekTarget: null, reseeked: false
+}));
+let act = 0;
+const A = () => P[act];        // trinh phat dang phat
+const B = () => P[1 - act];    // trinh phat chay truoc
+
+// Nap san link vao 1 trinh phat (KHONG phat: SoundCloud chi cho 1 trinh phat chay 1 luc,
+// trinh phat nay phat se lam bai dang nghe bi dung). Phan cham nhat la load -> lam truoc.
+function prepare(p, idx, done) {
+  const it = items[idx];
+  const job = p.job = ++jobSeq;
+  p.ready = false; p.idx = idx; p.start = it.start || 0;
+  const prevId = p.soundId, prevUrl = p.url;
+  let finished = false;
+  const fail = () => { if (finished || p.job !== job) return; finished = true; p.idx = -1; done(false); };
+  const timer = setTimeout(fail, 12000);
+
+  p.w.load(it.url, { auto_play: false, visual: false, show_comments: false, callback: () => check(0) });
+
+  // Ngay sau khi load, widget co the van tra ve bai cu -> thu lai vai lan roi moi ket luan link hong
+  function check(tries) {
+    if (p.job !== job) return;
+    p.w.getCurrentSound(s => {
+      if (p.job !== job) return;
+      const ok = s && s.id && (s.id !== prevId || norm(prevUrl) === norm(it.url));
+      if (!ok) return tries < 10 ? setTimeout(() => check(tries + 1), 250) : fail();
+      clearTimeout(timer);
+      if (finished) return;
+      finished = true;
+      p.soundId = s.id; p.url = it.url; p.sound = s; p.ready = true;
+      done(true, s);
+    });
+  }
+}
+
+// Chuyen sang trinh phat p (da nap san), phat va tua toi start
+function activate(p) {
+  const old = A();
+  act = P.indexOf(p);
+  if (old !== p) old.w.pause();
+  p.ready = false;
+  const ms = (items[cur].start || 0) * 1000;
+  p.seekTarget = ms; p.reseeked = false;
+  p.w.setVolume(100);
+  p.w.play();
+  if (ms > 0) p.w.seekTo(ms);
+  p.w.getDuration(d => { duration = d / 1000; });
+  const it = items[cur];
+  fails = 0;
+  if (it) { it.bad = false; if (p.sound) showSound(p.sound, it); }
+  schedulePreload();
+}
+
+// Tai truoc bai ke tiep vao trinh phat con lai
+function schedulePreload(delay = 1500) {
+  clearTimeout(preloadTimer);
+  preloadTimer = setTimeout(() => {
+    if (cur < 0 || !items.length) return;
+    const next = (cur + 1) % items.length;
+    const b = B(), it = items[next];
+    if (b.ready && b.idx === next && b.url === it.url && b.start === (it.start || 0)) return;
+    prepare(b, next, ok => {
+      if (!ok) { it.bad = true; save(); render(); }
+    });
+  }, delay);
+}
 
 function showSound(s, it) {
   const art = bigArt(s.artwork_url || (s.user && s.user.avatar_url));
@@ -348,56 +422,32 @@ function playIndex(i) {
   cur = ((i % items.length) + items.length) % items.length;
   const it = items[cur];
   switching = true;
-  clearTimeout(loadTimer);
-  // Link khong tai duoc trong 12s thi bo qua
-  loadTimer = setTimeout(() => skipBad(it), 12000);
   $('npLabel').textContent = `Đang phát · ${cur + 1}/${items.length}`;
   $('npTitle').textContent = it.title || 'Đang tải...';
   $('npArtist').textContent = it.artist || '';
   if (it.art) { $('cover').style.backgroundImage = `url("${it.art}")`; $('cover').classList.add('has'); }
   $('prog').style.width = '0';
   render();
-  const prevId = lastSound.id, prevUrl = lastSound.url;
-  widget.load(it.url, {
-    auto_play: true, visual: false, show_comments: false,
-    callback: () => check(0)
-  });
-  // Ngay sau khi load, widget co the van tra ve bai cu -> thu lai vai lan roi moi ket luan link hong
-  function check(tries) {
-    if (items[cur] !== it) return;
-    widget.getCurrentSound(s => {
-      const ok = s && s.id && (s.id !== prevId || norm(prevUrl) === norm(it.url));
-      if (!ok) return tries < 8 ? setTimeout(() => check(tries + 1), 500) : skipBad(it);
-      clearTimeout(loadTimer);
-      lastSound = { id: s.id, url: it.url };
-      fails = 0; it.bad = false;
-      const ms = (it.start || 0) * 1000;
-      widget.getDuration(d => { duration = d / 1000; });
-      showSound(s, it);
-      widget.isPaused(paused => {
-        if (paused) { pendingSeek = ms; widget.play(); return; }
-        // Bai moi da tu phat (auto_play) -> tua luon
-        if (ms > 0) widget.seekTo(ms);
-        setTimeout(() => { switching = false; }, 600);
-      });
-    });
-  }
-}
-let lastSound = { id: null, url: '' };
-// Ghi lai bai mac dinh cua iframe de khong nham no la bai moi
-widget.bind(SC.Widget.Events.READY, () => widget.getCurrentSound(s => {
-  if (s && lastSound.id == null) lastSound = { id: s.id, url: s.permalink_url || '' };
-}));
 
-const norm = u => String(u).replace(/^https?:\/\/(www\.|m\.)?/, '').replace(/[?#].*$/, '').replace(/\/$/, '').toLowerCase();
+  const b = B();
+  // Da tai san -> chuyen ngay
+  if (b.ready && b.idx === cur && b.url === it.url && b.start === (it.start || 0)) return activate(b);
+
+  // Chua tai san: dung bai cu, nap vao trinh phat con lai va phat luon khi toi start
+  A().w.pause();
+  const target = cur;
+  prepare(b, cur, ok => {
+    if (cur !== target) return;
+    if (ok) activate(b); else skipBad(it);
+  });
+}
 
 function skipBad(it) {
-  clearTimeout(loadTimer);
   if (items[cur] !== it) return;
   it.bad = true; save(); render();
   fails++;
   if (fails >= items.length) {
-    widget.pause(); switching = false;
+    A().w.pause(); switching = false;
     $('npTitle').textContent = 'Không phát được link nào';
     $('npArtist').textContent = 'Kiểm tra lại link (bài có thể bị xoá hoặc để riêng tư).';
     return;
@@ -408,8 +458,8 @@ function skipBad(it) {
 function restartSegment() {
   const it = items[cur];
   switching = true;
-  widget.seekTo((it.start || 0) * 1000);
-  setTimeout(() => { switching = false; }, 600);
+  A().w.seekTo((it.start || 0) * 1000);
+  setTimeout(() => { switching = false; }, 400);
 }
 
 function segmentDone() {
@@ -418,42 +468,50 @@ function segmentDone() {
   else playIndex(cur + 1);
 }
 
-widget.bind(SC.Widget.Events.PLAY, () => {
-  playing = true;
-  document.body.classList.add('playing');
-  $('btnPlay').textContent = '❚❚';
-  if (pendingSeek != null) {
-    const ms = pendingSeek; pendingSeek = null;
-    if (ms > 0) widget.seekTo(ms);
-    setTimeout(() => { switching = false; }, 600);
-  }
-  // Khong tat 'switching' o day: su kien PLAY co the den tu bai cu truoc khi bai moi san sang
+P.forEach(p => {
+  const E = SC.Widget.Events;
+  // Ghi lai bai mac dinh cua iframe de khong nham no la bai moi
+  p.w.bind(E.READY, () => p.w.getCurrentSound(s => { if (s && p.soundId == null) { p.soundId = s.id; p.url = s.permalink_url || ''; } }));
+  p.w.bind(E.PLAY, () => {
+    if (p !== A()) return;
+    playing = true;
+    document.body.classList.add('playing');
+    $('btnPlay').textContent = '❚❚';
+  });
+  p.w.bind(E.PAUSE, () => {
+    if (p !== A()) return;
+    playing = false;
+    document.body.classList.remove('playing');
+    $('btnPlay').textContent = '▶';
+  });
+  p.w.bind(E.PLAY_PROGRESS, e => {
+    if (p !== A() || cur < 0 || !items[cur]) return;
+    // Vua chuyen bai: cho toi khi vi tri da toi start roi moi tinh tiep
+    if (p.seekTarget != null) {
+      if (e.currentPosition < p.seekTarget - 1000) {
+        if (!p.reseeked) { p.reseeked = true; p.w.seekTo(p.seekTarget); }
+        return;
+      }
+      p.seekTarget = null;
+      switching = false;
+    }
+    if (switching) return;
+    const it = items[cur];
+    const pos = e.currentPosition / 1000;
+    const start = it.start || 0;
+    const end = it.end != null ? it.end : (duration || null);
+    if (end) $('prog').style.width = Math.min(100, Math.max(0, (pos - start) / (end - start) * 100)) + '%';
+    $('tPos').textContent = fmt(pos);
+    $('tRange').textContent = `${fmt(start)} → ${fmt(it.end)}`;
+    if (it.end != null && pos >= it.end) segmentDone();
+  });
+  p.w.bind(E.FINISH, () => { if (p === A() && p.seekTarget == null) segmentDone(); });
 });
-
-widget.bind(SC.Widget.Events.PAUSE, () => {
-  playing = false;
-  document.body.classList.remove('playing');
-  $('btnPlay').textContent = '▶';
-});
-
-widget.bind(SC.Widget.Events.PLAY_PROGRESS, e => {
-  if (cur < 0 || !items[cur] || switching) return;
-  const it = items[cur];
-  const pos = e.currentPosition / 1000;
-  const start = it.start || 0;
-  const end = it.end != null ? it.end : (duration || null);
-  if (end) $('prog').style.width = Math.min(100, Math.max(0, (pos - start) / (end - start) * 100)) + '%';
-  $('tPos').textContent = fmt(pos);
-  $('tRange').textContent = `${fmt(start)} → ${fmt(it.end)}`;
-  if (it.end != null && pos >= it.end) segmentDone();
-});
-
-widget.bind(SC.Widget.Events.FINISH, () => segmentDone());
 
 // ===== Dieu khien =====
 $('btnPlay').onclick = () => {
   if (cur < 0) { fails = 0; return playIndex(0); }
-  widget.toggle();
+  A().w.toggle();
 };
 $('btnNext').onclick = () => { fails = 0; playIndex(cur + 1); };
 function setMode(m) {
@@ -495,7 +553,7 @@ function move(i, d) {
 
 function remove(i) {
   items.splice(i, 1);
-  if (cur === i) { cur = -1; widget.pause(); }
+  if (cur === i) { cur = -1; A().w.pause(); }
   else if (cur > i) cur--;
   commit();
 }
