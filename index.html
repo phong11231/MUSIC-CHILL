@@ -348,6 +348,7 @@ let switching = false; // chong goi next 2 lan
 let playing = false;
 let duration = 0;
 let preloadTimer = null;
+let mainLoading = false; // dang tai bai nguoi dung chon -> khong cho tai truoc chen ngang
 
 const norm = u => String(u).replace(/^https?:\/\/(www\.|m\.)?/, '').replace(/[?#].*$/, '').replace(/\/$/, '').toLowerCase();
 const bigArt = u => u ? u.replace('-large.', '-t500x500.') : '';
@@ -405,7 +406,11 @@ function prepare(p, idx, done) {
     if (p.job !== job) return;
     p.w.getCurrentSound(s => {
       if (p.job !== job) return;
-      const ok = s && s.id && (s.id !== prevId || norm(prevUrl) === norm(it.url));
+      // Phai dung link da chon: so permalink. Link rut gon/chuyen huong thi permalink khac ->
+      // sau vai lan thu moi chap nhan, va chi khi do khong phai bai cu / bai khac trong danh sach
+      const link = norm((s && s.permalink_url) || '');
+      const ok = s && s.id && (link === norm(it.url) ||
+        (tries >= 6 && s.id !== prevId && !items.some(o => o !== it && norm(o.url) === link)));
       if (!ok) return tries < 10 ? clock.set(() => check(tries + 1), 250) : fail();
       clock.clear(timer);
       if (finished) return;
@@ -438,7 +443,7 @@ function activate(p) {
 function schedulePreload(delay = 1500) {
   clock.clear(preloadTimer);
   preloadTimer = clock.set(() => {
-    if (cur < 0 || !items.length) return;
+    if (cur < 0 || !items.length || mainLoading) return;
     const next = (cur + 1) % items.length;
     const b = B(), it = items[next];
     if (b.ready && b.idx === next && b.url === it.url && b.start === (it.start || 0)) return;
@@ -467,6 +472,7 @@ function playIndex(i) {
   cur = ((i % items.length) + items.length) % items.length;
   const it = items[cur];
   switching = true;
+  mainLoading = false;
   $('npLabel').textContent = `Đang phát · ${cur + 1}/${items.length}`;
   $('npTitle').textContent = it.title || 'Đang tải...';
   $('npArtist').textContent = it.artist || '';
@@ -480,9 +486,12 @@ function playIndex(i) {
 
   // Chua tai san: dung bai cu, nap vao trinh phat con lai va phat luon khi toi start
   A().w.pause();
+  clock.clear(preloadTimer);
+  mainLoading = true;
   const target = cur;
   prepare(b, cur, ok => {
     if (cur !== target) return;
+    mainLoading = false;
     if (ok) activate(b); else skipBad(it);
   });
 }
