@@ -214,7 +214,8 @@
   /* ===== Go phim ===== */
   #viewType { min-height: calc(100vh - 72px); min-height: calc(100dvh - 72px); display: flex; align-items: center; justify-content: center;
     padding: 0 clamp(16px, 5vw, 64px) 130px; }
-  .tt { width: min(1080px, 100%); }
+  .tt { width: min(1480px, 100%); }
+  .tt-size { min-width: 40px; text-align: center; color: var(--ink); font: 12px "Roboto Mono", monospace; }
   .tt-bar { display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: 6px; width: fit-content; max-width: 100%;
     margin: 0 auto 28px; padding: 6px 8px; font-size: 13px; background: rgba(14,8,10,.55); border: 1px solid var(--line); border-radius: 14px;
     backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px); transition: opacity .4s; }
@@ -251,8 +252,10 @@
   body.tt-running .tt-wpm { color: var(--ink); border-color: rgba(255,90,74,.4); }
   .tt-prog { font-size: clamp(24px, 2.6vw, 32px); font-weight: 600; color: var(--accent); text-shadow: 0 0 24px rgba(255,90,74,.4); }
 
-  .tt-wrap { --fs: clamp(19px, 2.2vw, 28px); --lh: calc(var(--fs) * 1.65); position: relative; height: calc(var(--lh) * 3); overflow: hidden;
-    font: 400 var(--fs)/var(--lh) "Roboto Mono", monospace; cursor: text; }
+  .tt-wrap { --fs: 56px; --lh: calc(var(--fs) * 1.6); position: relative; height: calc(var(--lh) * 2); overflow: hidden;
+    font: 400 var(--fs)/var(--lh) "Roboto Mono", monospace; cursor: text; transition: height .2s; }
+  .tt-wrap.sans { font-family: "Be Vietnam Pro", system-ui, sans-serif; --lh: calc(var(--fs) * 1.75); }
+  .tt-wrap.sans .tt-words .w { margin-right: .42em; }
   .tt-words { position: relative; display: flex; flex-wrap: wrap; transition: transform .2s ease; user-select: none; }
   .tt-words .w { height: var(--lh); margin-right: .55em; white-space: pre; }
   .tt-words .w.err { text-decoration: underline 2px rgba(255,90,74,.65); text-underline-offset: .32em; }
@@ -261,7 +264,7 @@
   .tt-words .w span.pend { color: rgba(243,239,233,.72); }
   .tt-words .w span.bad { color: var(--accent); }
   .tt-words .w span.extra { color: #a8382d; }
-  .tt-caret { position: absolute; left: 0; top: 0; width: 3px; height: calc(var(--fs) * 1.25); border-radius: 2px; background: var(--accent);
+  .tt-caret { position: absolute; left: 0; top: 0; width: max(3px, calc(var(--fs) * .06)); height: calc(var(--fs) * 1.25); border-radius: 2px; background: var(--accent);
     box-shadow: 0 0 14px var(--accent); transition: left .1s ease, top .1s ease; pointer-events: none; }
   .tt-caret.idle { animation: blink 1.05s step-end infinite; }
   @keyframes blink { 50% { opacity: 0; } }
@@ -364,6 +367,11 @@
       <button id="ttNew" title="Thêm đoạn mới">＋ đoạn mới</button>
       <span class="sep"></span>
       <button id="ttNoTone" title="Bỏ dấu tiếng Việt khi gõ">không dấu</button>
+      <span class="sep"></span>
+      <button id="ttSmaller" title="Chữ nhỏ hơn">A−</button>
+      <span class="tt-size" id="ttSize"></span>
+      <button id="ttBigger" title="Chữ to hơn">A+</button>
+      <button id="ttFont" title="Đổi kiểu chữ: mono / sans"></button>
       <span class="sep"></span>
       <span class="tt-sync" id="ttSync" title="Đang tải..."></span>
     </div>

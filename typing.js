@@ -126,12 +126,12 @@
     caret.style.top = (r.top - ir.top + (r.height - caret.offsetHeight) / 2) + 'px';
   }
 
-  // Giu dong dang go o hang thu 2, chi hien 3 dong
+  // Chi hien 2 dong: dong dang go o tren, dong ke tiep o duoi
   function scrollLines() {
     const el = els[idx]; if (!el) return;
     const lh = el.offsetHeight;
     const line = Math.round(el.offsetTop / lh);
-    inner.style.transform = `translateY(${-(line >= 2 ? (line - 1) * lh : 0)}px)`;
+    inner.style.transform = `translateY(${-line * lh}px)`;
   }
 
   function wake() {
@@ -364,9 +364,27 @@
   function renderBar() {
     $('ttPick').innerHTML = texts.map(t => `<option value="${esc(t.id)}"${t.id === cfg.textId ? ' selected' : ''}>${esc(t.name)}</option>`).join('');
     $('ttNoTone').classList.toggle('on', cfg.noTone);
+    $('ttSize').textContent = SIZES[cfg.size] + 'px';
+    $('ttFont').textContent = cfg.font === 'sans' ? 'sans' : 'mono';
   }
   $('ttPick').addEventListener('change', e => { cfg.textId = e.target.value; saveCfg(); newTest(); });
   $('ttNoTone').addEventListener('click', () => { cfg.noTone = !cfg.noTone; saveCfg(); renderBar(); newTest(); });
+
+  // ===== Co chu + kieu chu =====
+  const SIZES = [24, 32, 42, 56, 72, 96];
+  if (!(cfg.size in SIZES)) cfg.size = 3;
+  function applyLook() {
+    const px = SIZES[cfg.size];
+    // Man hinh hep tu thu nho: toi thieu ~20px, theo be ngang, toi da bang co da chon
+    wrap.style.setProperty('--fs', `clamp(${Math.min(px, 20)}px, ${(px / 10).toFixed(2)}vw, ${px}px)`);
+    wrap.classList.toggle('sans', cfg.font === 'sans');
+    renderBar();
+    requestAnimationFrame(() => { scrollLines(); placeCaret(); });
+  }
+  const look = fn => () => { fn(); saveCfg(); applyLook(); focusInput(); };
+  $('ttSmaller').addEventListener('click', look(() => { cfg.size = Math.max(0, cfg.size - 1); }));
+  $('ttBigger').addEventListener('click', look(() => { cfg.size = Math.min(SIZES.length - 1, cfg.size + 1); }));
+  $('ttFont').addEventListener('click', look(() => { cfg.font = cfg.font === 'sans' ? 'mono' : 'sans'; }));
 
   // ===== Khung soan doan =====
   let editingId = null;
@@ -432,7 +450,7 @@
 
   window.TT = { onShow() { if (!finished) { scrollLines(); placeCaret(); focusInput(); } } };
 
-  renderBar();
+  applyLook();
   newTest();
   loadTexts();
   if (document.fonts) document.fonts.ready.then(() => { scrollLines(); placeCaret(); });
