@@ -13,7 +13,7 @@
   }];
   let texts = load('tt.texts', DEFAULT);
   if (!Array.isArray(texts) || !texts.length) texts = DEFAULT.slice();
-  const cfg = Object.assign({ textId: texts[0].id, noTone: false }, load('tt.cfg', {}));
+  const cfg = Object.assign({ textId: texts[0].id, noTone: false, font: 'sans' }, load('tt.cfg', {}));
   if (!texts.some(t => t.id === cfg.textId)) cfg.textId = texts[0].id;
 
   // ===== Dong bo cac doan len GitHub: texts.json trong repo, dung chung token voi danh sach nhac =====
@@ -113,6 +113,7 @@
     const el = els[i]; if (!el) return;
     el.innerHTML = wordHTML(i);
     el.classList.toggle('err', i < idx && typed[i] !== words[i]);
+    el.classList.toggle('cur', i === idx && !finished);
   }
 
   function placeCaret() {
@@ -190,19 +191,30 @@
 
   // ===== Nhap lieu (dung o nhap an de bo go Unikey/Telex hoat dong binh thuong) =====
   function judgeNew(v) {
-    if (v.length <= prev.length) return;      // xoa, hoac bo go thay chu (vd. e -> e^) -> khong tinh phim
+    if (v.length <= prev.length) return 0;    // xoa, hoac bo go thay chu (vd. e -> e^) -> khong tinh phim
     const target = words[idx];
+    let bad = 0;
     for (let k = prev.length; k < v.length; k++) {
       secChars++;
       if (k < target.length && near(v[k], target[k])) ks.ok++;
-      else { ks.bad++; secErr++; }
+      else { ks.bad++; secErr++; bad++; }
     }
+    return bad;
+  }
+
+  // Hieu ung con tro: nay nhe moi phim, rung khi go sai
+  function fx(cls) {
+    caret.classList.remove('bump', 'shake');
+    void caret.offsetWidth;
+    caret.classList.add(cls);
   }
 
   function onType(v) {
-    judgeNew(v);
+    const grew = v.length > prev.length;
+    const bad = judgeNew(v);
     typed[idx] = v; prev = v;
     paint(idx); placeCaret(); updateLive(); wake();
+    if (grew) fx(bad ? 'shake' : 'bump');
     // Tu cuoi go dung -> xong luon, khong can bam cach
     if (idx === words.length - 1 && v === words[idx]) commit();
   }
@@ -285,8 +297,8 @@
     const isPb = !old || r.wpm > old.wpm;
     if (isPb) { pbs[pbKey()] = { wpm: r.wpm, acc, date: Date.now() }; store('tt.pb', pbs); }
 
-    $('rWpm').textContent = Math.round(r.wpm);
-    $('rAcc').textContent = Math.round(acc) + '%';
+    countUp($('rWpm'), r.wpm, '');
+    countUp($('rAcc'), acc, '%');
     $('rRaw').textContent = Math.round(r.raw);
     $('rChars').textContent = `${r.c.correct}/${r.c.incorrect}/${r.c.extra}/${r.c.missed}`;
     $('rCons').textContent = Math.round(cons) + '%';
@@ -302,6 +314,16 @@
     $('ttStage').hidden = true;
     $('ttResult').hidden = false;
     drawChart();
+  }
+
+  // So ket qua chay dem tu 0 len
+  function countUp(el, to, suffix) {
+    const t0 = performance.now(), dur = 900;
+    (function step(now) {
+      const p = Math.min(1, (now - t0) / dur), e = 1 - Math.pow(1 - p, 3);
+      el.textContent = Math.round(to * e) + suffix;
+      if (p < 1) requestAnimationFrame(step);
+    })(t0);
   }
 
   function drawChart() {
